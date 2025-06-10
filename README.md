@@ -67,3 +67,66 @@ A0	ADC0	Motor Controller	RPM Input
     RPM input should not exceed 3.3V (use voltage divider if needed)
     Speaker impedance should be 4-8Ω, power rating 3-5W
 
+📦 Required Libraries
+
+Install these libraries through Arduino IDE Library Manager:
+
+
+1. ESP8266Audio by Earle Philhower
+   - Search for: "ESP8266Audio"
+   - This includes AudioFileSourceSD, AudioGeneratorWAV, AudioOutputI2S
+
+2. SD (usually pre-installed with Arduino IDE)
+
+3. SPI (usually pre-installed with Arduino IDE)
+            
+
+🎵 Sound File Preparation
+Audio File Requirements:
+
+    Format: WAV files (16-bit, mono or stereo)
+    Sample Rate: 22kHz or 44.1kHz
+    File Names: idle.wav, low_rpm.wav, mid_rpm.wav, high_rpm.wav, redline.wav
+    Length: 2-5 seconds each (will loop automatically)
+    Size: Keep files under 1MB each for smooth playback
+
+Sound File Sources:
+
+    Record real exhaust sounds with smartphone
+    Use free sound libraries (freesound.org)
+    Generate synthetic engine sounds with audio software
+    Extract from YouTube videos (convert to WAV)
+
+🔧 Calibration & Testing
+RPM Calibration:
+
+    Connect RPM signal from your motor controller
+    Open Serial Monitor (115200 baud)
+    Observe RPM readings vs actual motor speed
+    Adjust the map(analogValue, 0, 1023, 0, 5000) values
+    Modify RPM ranges in the array to match your motor
+
+Volume Control:
+
+Adjust out->SetGain(0.8) value between 0.0-1.0
+Response Speed:
+
+Change soundChangeDelay for faster/slower sound transitions
+🔋 Power Considerations:
+
+    D1 Mini: ~80mA
+    SD Module: ~20mA
+    MAX98357A + Speaker: 100-500mA (depending on volume)
+    Total: Plan for 1A power supply minimum
+    Use 5V supply with 3.3V regulator for best results
+
+🎯 Next Steps
+
+    Wire components according to diagram
+    Install required libraries in Arduino IDE
+    Upload the code to Wemos D1 Mini
+    Prepare WAV files and copy to SD card root directory
+    Connect RPM signal from your motor controller
+    Test and calibrate RPM ranges
+    Fine-tune volume and response timing
+
