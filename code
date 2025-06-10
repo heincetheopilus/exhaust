@@ -1,0 +1,182 @@
+#include "AudioFileSourceSD.h"
+#include "AudioGeneratorWAV.h"
+#include "AudioOutputI2S.h"
+#include <SPI.h>
+#include <SD.h>
+
+// Pin definitions
+#define SD_CS_PIN    15  // D8
+#define RPM_PIN      A0  // Analog input for RPM
+#define LED_PIN      2   // D4
+#define I2S_DOUT     5   // D1
+#define I2S_BCLK     4   // D2  
+#define I2S_LRC      0   // D3
+
+// Audio objects
+AudioGeneratorWAV *wav;
+AudioFileSourceSD *file;
+AudioOutputI2S *out;
+
+// Engine sound parameters
+int currentRPM = 0;
+int lastRPM = 0;
+String currentSoundFile = "";
+unsigned long lastRPMCheck = 0;
+unsigned long soundChangeDelay = 100; // ms
+
+// RPM ranges and corresponding sound files
+struct RPMRange {
+  int minRPM;
+  int maxRPM;
+  String soundFile;
+};
+
+RPMRange rpmRanges[] = {
+  {0, 800, "/idle.wav"},
+  {800, 1500, "/low_rpm.wav"},
+  {1500, 2500, "/mid_rpm.wav"},
+  {2500, 3500, "/high_rpm.wav"},
+  {3500, 5000, "/redline.wav"}
+};
+
+int numRanges = sizeof(rpmRanges) / sizeof(RPMRange);
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+  
+  // Initialize pins
+  pinMode(LED_PIN, OUTPUT);
+  pinMode(RPM_PIN, INPUT);
+  
+  // Blink LED during startup
+  for(int i = 0; i < 3; i++) {
+    digitalWrite(LED_PIN, HIGH);
+    delay(200);
+    digitalWrite(LED_PIN, LOW);
+    delay(200);
+  }
+  
+  Serial.println("Initializing Exhaust Sound System...");
+  
+  // Initialize SD card
+  if (!SD.begin(SD_CS_PIN)) {
+    Serial.println("SD Card initialization failed!");
+    while(1) {
+      digitalWrite(LED_PIN, HIGH);
+      delay(100);
+      digitalWrite(LED_PIN, LOW);
+      delay(100);
+    }
+  }
+  Serial.println("SD Card initialized successfully");
+  
+  // List files on SD card
+  listSDFiles();
+  
+  // Initialize audio output
+  out = new AudioOutputI2S();
+  out->SetPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
+  out->SetGain(0.8); // Adjust volume (0.0 to 1.0)
+  
+  Serial.println("System ready!");
+  digitalWrite(LED_PIN, HIGH);
+}
+
+void loop() {
+  // Check if current audio is still playing
+  if (wav && wav->isRunning()) {
+    if (!wav->loop()) {
+      // Current sound finished, restart it for looping
+      wav->stop();
+      file->close();
+      delete wav;
+      delete file;
+      startCurrentSound();
+    }
+  }
+  
+  // Check RPM periodically
+  if (millis() - lastRPMCheck > soundChangeDelay) {
+    updateRPM();
+    lastRPMCheck = millis();
+  }
+  
+  delay(10);
+}
+
+void updateRPM() {
+  // Read analog input (0-1023) and convert to RPM (0-5000)
+  int analogValue = analogRead(RPM_PIN);
+  currentRPM = map(analogValue, 0, 1023, 0, 5000);
+  
+  // Add some smoothing
+  currentRPM = (currentRPM + lastRPM) / 2;
+  
+  // Check if we need to change sound file
+  String newSoundFile = getSoundFileForRPM(currentRPM);
+  
+  if (newSoundFile != currentSoundFile) {
+    Serial.print("RPM: ");
+    Serial.print(currentRPM);
+    Serial.print(" - Switching to: ");
+    Serial.println(newSoundFile);
+    
+    // Stop current sound
+    if (wav && wav->isRunning()) {
+      wav->stop();
+      file->close();
+      delete wav;
+      delete file;
+    }
+    
+    currentSoundFile = newSoundFile;
+    startCurrentSound();
+  }
+  
+  lastRPM = currentRPM;
+}
+
+String getSoundFileForRPM(int rpm) {
+  for (int i = 0; i < numRanges; i++) {
+    if (rpm >= rpmRanges[i].minRPM && rpm < rpmRanges[i].maxRPM) {
+      return rpmRanges[i].soundFile;
+    }
+  }
+  return "/idle.wav"; // Default fallback
+}
+
+void startCurrentSound() {
+  if (currentSoundFile.length() > 0) {
+    file = new AudioFileSourceSD(currentSoundFile.c_str());
+    wav = new AudioGeneratorWAV();
+    
+    if (wav->begin(file, out)) {
+      Serial.print("Playing: ");
+      Serial.println(currentSoundFile);
+      digitalWrite(LED_PIN, HIGH);
+    } else {
+      Serial.print("Failed to start: ");
+      Serial.println(currentSoundFile);
+      digitalWrite(LED_PIN, LOW);
+    }
+  }
+}
+
+void listSDFiles() {
+  Serial.println("Files on SD card:");
+  File root = SD.open("/");
+  while (true) {
+    File entry = root.openNextFile();
+    if (!entry) break;
+    
+    Serial.print("  ");
+    Serial.print(entry.name());
+    Serial.print(" (");
+    Serial.print(entry.size());
+    Serial.println(" bytes)");
+    
+    entry.close();
+  }
+  root.close();
+}
